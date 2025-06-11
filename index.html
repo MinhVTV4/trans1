@@ -354,7 +354,7 @@
         let currentListenBubbleId = null;
         let finalTranscriptForBubble = '';
         let unsubscribeHistory = null;
-        let chatSession = null; // NEW: For contextual translation
+        let chatSession = null; // For contextual translation
         
         let appSettings = {
             autoSpeak: false,
@@ -414,12 +414,12 @@
             bubble.innerHTML = `<div class="text-content">${text}</div>${actionsHTML ? `<div class="bubble-actions flex items-center justify-end space-x-2 mt-2">${actionsHTML}</div>` : ''}`;
             
             bubbleWrapper.appendChild(bubble);
+            conversationView.appendChild(bubbleWrapper);
             scrollToBottom();
             return bubbleId;
         }
 
         // --- Core Logic ---
-        // NEW: Function to start a new contextual conversation
         function startNewChatSession() {
             if (!generativeModel) return;
             
@@ -429,7 +429,6 @@
                 'assistant'
             );
 
-            // Start a new chat session with a clean history
             chatSession = generativeModel.startChat({
                 history: []
             });
@@ -493,9 +492,7 @@
 
                 if (listeningBubble) {
                      if (transcriptToProcess) {
-                        // We keep the bubble simple, just the transcript
                         listeningBubble.querySelector('.text-content').textContent = transcriptToProcess;
-                        // The translation function will now handle adding to history
                         await translateAndDisplay(transcriptToProcess);
                         processedSuccessfully = true;
                      } else listeningBubble.parentElement.remove();
@@ -535,43 +532,48 @@
             });
         }
 
-        // MODIFIED: Function now uses chatSession for contextual translation
-        async function translateAndDisplay(text, isFromHistory = false) {
-             if (!chatSession) {
+        // FIX: Reworked the translateAndDisplay function to be more robust.
+        async function translateAndDisplay(text) {
+            if (!chatSession) {
                 showUIMessage("Phiên trò chuyện chưa sẵn sàng. Vui lòng thử lại.", 4000);
                 return;
             }
-             if (!isFromHistory) {
-                // If it's a new user input, create the user bubble
-                // This is moved from onend to here, so text input also creates a bubble
-             }
+
             const assistantBubbleId = createBubble('<span class="spinner"></span>', 'assistant', targetLangSelect.value);
-            const assistantBubble = document.getElementById(assistantBubbleId);
+            
             try {
                 const sourceLangName = languageMap[sourceLangSelect.value].geminiName;
                 const targetLangName = languageMap[targetLangSelect.value].geminiName;
                 
-                // NEW: Contextual prompt
                 const contextualPrompt = `Considering the previous conversation turns, provide a natural and accurate translation of the user's latest message from ${sourceLangName} to ${targetLangName}. Output ONLY the translated text, with no extra explanations or quotation marks. The user's message is: "${text}"`;
 
                 const result = await chatSession.sendMessage(contextualPrompt);
                 const response = await result.response;
                 const translatedText = response.text().trim();
 
-                assistantBubble.querySelector('.text-content').textContent = translatedText;
-                
-                if (appSettings.autoSpeak && translatedText) {
-                    await speakText(translatedText, targetLangSelect.value);
-                }
+                const assistantBubble = document.getElementById(assistantBubbleId);
+                // Check if the bubble still exists before updating
+                if (assistantBubble) {
+                    assistantBubble.querySelector('.text-content').textContent = translatedText;
+                    
+                    if (appSettings.autoSpeak && translatedText) {
+                        await speakText(translatedText, targetLangSelect.value);
+                    }
 
-                if (auth.currentUser && text && translatedText) {
-                    saveToHistory(text, translatedText, sourceLangSelect.value, targetLangSelect.value);
+                    if (auth.currentUser && text && translatedText) {
+                        saveToHistory(text, translatedText, sourceLangSelect.value, targetLangSelect.value);
+                    }
                 }
 
             } catch (error) {
                 console.error("Translation error:", error);
-                assistantBubble.querySelector('.text-content').innerHTML = `<span class="text-red-500">Lỗi dịch.</span>`;
-                 // If there's an API error, we should probably restart the session
+                
+                // Safely find and remove the spinner bubble in case of an error
+                const failedBubble = document.getElementById(assistantBubbleId);
+                if (failedBubble && failedBubble.parentElement) {
+                    failedBubble.parentElement.remove();
+                }
+
                 startNewChatSession();
                 createBubble("Đã có lỗi với AI, phiên dịch đã được làm mới.", 'info');
             }
@@ -605,7 +607,7 @@
         function handleSendFromInput() {
             const text = textInput.value.trim();
             if (text) {
-                createBubble(text, 'user', sourceLangSelect.value); // Create user bubble immediately
+                createBubble(text, 'user', sourceLangSelect.value);
                 translateAndDisplay(text);
                 textInput.value = '';
                 textInput.style.height = 'auto';
@@ -647,7 +649,7 @@
         swapLangButton.addEventListener('click', () => { 
             swapLanguages(); 
             showUIMessage("Đã đảo chiều ngôn ngữ. Bắt đầu hội thoại mới.", 2500);
-            startNewChatSession(); // Crucial for context
+            startNewChatSession();
         });
         sourceLangSelect.addEventListener('change', () => { if (recognition) { recognition.lang = sourceLangSelect.value; } });
 
@@ -668,7 +670,7 @@
             const { original, translated, sourceLang, targetLang } = historyItem.dataset;
             if (listenBtn) speakSequentially([{ text: original, lang: sourceLang }, { text: translated, lang: targetLang }]);
             if (reuseBtn) { 
-                startNewChatSession(); // Start a new context when reusing from history
+                startNewChatSession();
                 createBubble(original, 'user', sourceLang);
                 createBubble(translated, 'assistant', targetLang); 
                 closeAllPanels(); 
