@@ -151,6 +151,10 @@
                  <p id="mic-instruction" class="text-xs sm:text-sm text-gray-500">Nhấn & Giữ Micro để nói</p>
             </div>
             <div class="flex items-center space-x-2">
+                 <!-- NEW: New Chat Button -->
+                 <button id="newChatBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">
+                     <i class="fas fa-plus-square text-xl text-gray-600"></i>
+                 </button>
                  <button id="settingsToggleBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Cài đặt" aria-label="Cài đặt">
                      <i class="fas fa-cog text-xl text-gray-600"></i>
                  </button>
@@ -166,12 +170,7 @@
         <!-- Main Content Area -->
         <div class="flex-grow flex flex-col overflow-hidden relative">
             <div id="conversationView" class="flex-grow p-4 space-y-4 overflow-y-auto">
-                <div class="flex justify-start">
-                    <div class="bubble assistant-bubble">
-                        <p class="font-medium">Chào bạn!</p>
-                        <p class="text-sm text-gray-600 mt-1">Gõ văn bản hoặc vào Cài đặt để bật "Chế độ Trò chuyện" và "Hội thoại song ngữ".</p>
-                    </div>
-                </div>
+                <!-- Bubbles will be added here dynamically -->
             </div>
 
             <div id="permission-overlay" class="absolute inset-0 bg-white/90 backdrop-blur-sm z-30 flex-col items-center justify-center text-center p-6 rounded-lg" style="display: none;">
@@ -205,7 +204,6 @@
                             </div>
                         </div>
                     </div>
-                     <!-- NEW: Bilingual Toggle -->
                      <div id="bilingualToggleContainer" class="flex items-center justify-between p-3 bg-blue-50 rounded-lg transition-opacity duration-300">
                         <div>
                             <label for="bilingualToggle" class="font-medium text-blue-800">Hội thoại song ngữ</label>
@@ -283,7 +281,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
-        import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-ai.js";
+        import { getAI, getGenerativeModel } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-ai.js";
 
         // DOM Elements
         const micButton = document.getElementById('micButton');
@@ -296,6 +294,7 @@
         const permissionOverlay = document.getElementById('permission-overlay');
         const textInput = document.getElementById('textInput');
         const sendButton = document.getElementById('sendButton');
+        const newChatBtn = document.getElementById('newChatBtn');
         
         // Panel & Settings Elements
         const settingsToggleBtn = document.getElementById('settingsToggleBtn');
@@ -338,10 +337,10 @@
         const auth = getAuth(app);
         const db = getFirestore(app);
         
-        let generativeAIModel;
+        let generativeModel;
         try {
-            const firebaseAIService = getAI(app, { backend: new GoogleAIBackend() });
-            generativeAIModel = getGenerativeModel(firebaseAIService, { model: "gemini-1.5-flash" });
+            const firebaseAIService = getAI(app);
+            generativeModel = getGenerativeModel(firebaseAIService, { model: "gemini-1.5-flash" });
         } catch (error) {
             console.error("Lỗi khởi tạo Firebase AI Logic:", error);
             showUIMessage("Lỗi khởi tạo dịch vụ AI.", 5000);
@@ -355,6 +354,7 @@
         let currentListenBubbleId = null;
         let finalTranscriptForBubble = '';
         let unsubscribeHistory = null;
+        let chatSession = null; // NEW: For contextual translation
         
         let appSettings = {
             autoSpeak: false,
@@ -370,7 +370,6 @@
         };
 
         // --- Stability Workarounds ---
-        // FIX: Add a periodic ping to keep speech synthesis alive in some browsers (e.g., Chrome)
         try {
             setInterval(() => {
                 if (window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
@@ -381,7 +380,6 @@
         } catch (e) {
             console.warn("Could not set up SpeechSynthesis ping.", e);
         }
-
 
         // --- UI Functions ---
         function showUIMessage(message, duration = 3000) {
@@ -416,12 +414,28 @@
             bubble.innerHTML = `<div class="text-content">${text}</div>${actionsHTML ? `<div class="bubble-actions flex items-center justify-end space-x-2 mt-2">${actionsHTML}</div>` : ''}`;
             
             bubbleWrapper.appendChild(bubble);
-            conversationView.appendChild(bubbleWrapper);
             scrollToBottom();
             return bubbleId;
         }
 
         // --- Core Logic ---
+        // NEW: Function to start a new contextual conversation
+        function startNewChatSession() {
+            if (!generativeModel) return;
+            
+            conversationView.innerHTML = '';
+            createBubble(
+                '<p class="font-medium">Chào bạn!</p><p class="text-sm text-gray-600 mt-1">Bắt đầu một cuộc trò chuyện mới. Dữ liệu ngữ cảnh đã được làm mới.</p>',
+                'assistant'
+            );
+
+            // Start a new chat session with a clean history
+            chatSession = generativeModel.startChat({
+                history: []
+            });
+            console.log("New contextual chat session started.");
+        }
+
         function initializeSpeechRecognition() {
             const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
             if (!SpeechRecognition) {
@@ -479,7 +493,9 @@
 
                 if (listeningBubble) {
                      if (transcriptToProcess) {
+                        // We keep the bubble simple, just the transcript
                         listeningBubble.querySelector('.text-content').textContent = transcriptToProcess;
+                        // The translation function will now handle adding to history
                         await translateAndDisplay(transcriptToProcess);
                         processedSuccessfully = true;
                      } else listeningBubble.parentElement.remove();
@@ -489,7 +505,6 @@
                 if (appSettings.recordingMode === 'continuous' && isContinuousModeActive) {
                     if (appSettings.bilingualMode && processedSuccessfully) {
                          swapLanguages();
-                         // FIX: Add a feedback bubble to inform the user of the language change
                          createBubble(`Bây giờ đang nghe bằng ${languageMap[sourceLangSelect.value].name}...`, 'info');
                          setTimeout(() => { if (isContinuousModeActive) recognition.start(); }, 500);
                     } else {
@@ -503,51 +518,62 @@
             };
         }
 
-        // FIX: Fortified speakText function to prevent it from getting stuck
         function speakText(text, langCode) {
             return new Promise((resolve) => {
                 if (!text || !langCode || !window.speechSynthesis) {
                     resolve();
                     return;
                 }
-                
-                // Safety net: resolve after a calculated time + buffer, in case onend never fires.
-                const estimatedTime = (text.length / 10) * 1000 + 2000; // Roughly 10 chars/sec + 2s buffer
-                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 3000)); // Minimum 3 seconds
-
+                const estimatedTime = (text.length / 10) * 1000 + 2000;
+                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 3000));
                 speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = languageMap[langCode]?.ttsName || langCode;
-                utterance.onend = () => {
-                    clearTimeout(safetyTimeout);
-                    resolve();
-                };
-                utterance.onerror = (e) => {
-                    console.error("Speech synthesis error:", e);
-                    clearTimeout(safetyTimeout);
-                    resolve();
-                };
+                utterance.onend = () => { clearTimeout(safetyTimeout); resolve(); };
+                utterance.onerror = (e) => { console.error("Speech synthesis error:", e); clearTimeout(safetyTimeout); resolve(); };
                 speechSynthesis.speak(utterance);
             });
         }
 
-        async function translateAndDisplay(text) {
-            if (!generativeAIModel) return showUIMessage("Dịch vụ AI chưa sẵn sàng.", 4000);
+        // MODIFIED: Function now uses chatSession for contextual translation
+        async function translateAndDisplay(text, isFromHistory = false) {
+             if (!chatSession) {
+                showUIMessage("Phiên trò chuyện chưa sẵn sàng. Vui lòng thử lại.", 4000);
+                return;
+            }
+             if (!isFromHistory) {
+                // If it's a new user input, create the user bubble
+                // This is moved from onend to here, so text input also creates a bubble
+             }
             const assistantBubbleId = createBubble('<span class="spinner"></span>', 'assistant', targetLangSelect.value);
             const assistantBubble = document.getElementById(assistantBubbleId);
             try {
                 const sourceLangName = languageMap[sourceLangSelect.value].geminiName;
                 const targetLangName = languageMap[targetLangSelect.value].geminiName;
-                const prompt = `Translate the following ${sourceLangName} text to ${targetLangName}. Provide only the translation, without any additional comments, context, or quotation marks: "${text}"`;
-                const result = await generativeAIModel.generateContent(prompt);
+                
+                // NEW: Contextual prompt
+                const contextualPrompt = `Considering the previous conversation turns, provide a natural and accurate translation of the user's latest message from ${sourceLangName} to ${targetLangName}. Output ONLY the translated text, with no extra explanations or quotation marks. The user's message is: "${text}"`;
+
+                const result = await chatSession.sendMessage(contextualPrompt);
                 const response = await result.response;
                 const translatedText = response.text().trim();
+
                 assistantBubble.querySelector('.text-content').textContent = translatedText;
-                if (appSettings.autoSpeak && translatedText) await speakText(translatedText, targetLangSelect.value);
-                if (auth.currentUser && text && translatedText) saveToHistory(text, translatedText, sourceLangSelect.value, targetLangSelect.value);
+                
+                if (appSettings.autoSpeak && translatedText) {
+                    await speakText(translatedText, targetLangSelect.value);
+                }
+
+                if (auth.currentUser && text && translatedText) {
+                    saveToHistory(text, translatedText, sourceLangSelect.value, targetLangSelect.value);
+                }
+
             } catch (error) {
                 console.error("Translation error:", error);
                 assistantBubble.querySelector('.text-content').innerHTML = `<span class="text-red-500">Lỗi dịch.</span>`;
+                 // If there's an API error, we should probably restart the session
+                startNewChatSession();
+                createBubble("Đã có lỗi với AI, phiên dịch đã được làm mới.", 'info');
             }
         }
         
@@ -579,7 +605,7 @@
         function handleSendFromInput() {
             const text = textInput.value.trim();
             if (text) {
-                createBubble(text, 'user');
+                createBubble(text, 'user', sourceLangSelect.value); // Create user bubble immediately
                 translateAndDisplay(text);
                 textInput.value = '';
                 textInput.style.height = 'auto';
@@ -617,8 +643,15 @@
             targetLangSelect.value = (currentSource === 'en-US') ? 'en' : 'vi';
             if (recognition) recognition.lang = sourceLangSelect.value;
         }
-        swapLangButton.addEventListener('click', () => { swapLanguages(); showUIMessage("Đã đảo chiều ngôn ngữ", 2000); });
-        sourceLangSelect.addEventListener('change', () => { if (recognition) recognition.lang = sourceLangSelect.value; });
+
+        swapLangButton.addEventListener('click', () => { 
+            swapLanguages(); 
+            showUIMessage("Đã đảo chiều ngôn ngữ. Bắt đầu hội thoại mới.", 2500);
+            startNewChatSession(); // Crucial for context
+        });
+        sourceLangSelect.addEventListener('change', () => { if (recognition) { recognition.lang = sourceLangSelect.value; } });
+
+        newChatBtn.addEventListener('click', startNewChatSession);
 
         conversationView.addEventListener('click', (e) => {
             const ttsButton = e.target.closest('.tts-button');
@@ -634,7 +667,12 @@
             const reuseBtn = e.target.closest('.history-reuse-btn');
             const { original, translated, sourceLang, targetLang } = historyItem.dataset;
             if (listenBtn) speakSequentially([{ text: original, lang: sourceLang }, { text: translated, lang: targetLang }]);
-            if (reuseBtn) { createBubble(original, 'user'); createBubble(translated, 'assistant', targetLang); closeAllPanels(); }
+            if (reuseBtn) { 
+                startNewChatSession(); // Start a new context when reusing from history
+                createBubble(original, 'user', sourceLang);
+                createBubble(translated, 'assistant', targetLang); 
+                closeAllPanels(); 
+            }
         });
 
         // --- Settings & Panels ---
@@ -725,6 +763,7 @@
         // --- Initial Load ---
         loadSettings();
         initializeSpeechRecognition();
+        startNewChatSession(); // Start the first session on load
     </script>
 </body>
 </html>
