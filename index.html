@@ -253,8 +253,18 @@
              <div class="flex items-center justify-between mb-3">
                 <div class="language-select text-center">
                     <select id="sourceLangSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                        <option value="en-US">English</option>
                         <option value="vi-VN" selected>Tiếng Việt</option>
+                        <option value="en-US">English</option>
+                        <option value="es-ES">Español</option>
+                        <option value="fr-FR">Français</option>
+                        <option value="de-DE">Deutsch</option>
+                        <option value="it-IT">Italiano</option>
+                        <option value="ja-JP">日本語</option>
+                        <option value="ko-KR">한국어</option>
+                        <option value="ru-RU">Русский</option>
+                        <option value="hi-IN">हिन्दी</option>
+                        <option value="zh-CN">中文 (普通话)</option>
+                        <option value="pt-BR">Português</option>
                     </select>
                 </div>
                 <button id="swapLangButton" class="p-3 rounded-full hover:bg-gray-200" title="Đảo chiều ngôn ngữ" aria-label="Đảo chiều ngôn ngữ">
@@ -262,8 +272,18 @@
                 </button>
                 <div class="language-select text-center">
                     <select id="targetLangSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
-                        <option value="vi">Tiếng Việt</option>
                         <option value="en" selected>English</option>
+                        <option value="vi">Tiếng Việt</option>
+                        <option value="es">Español</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                        <option value="it">Italiano</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="ru">Русский</option>
+                        <option value="hi">हिन्दी</option>
+                        <option value="zh">中文 (普通话)</option>
+                        <option value="pt">Português</option>
                     </select>
                 </div>
              </div>
@@ -370,11 +390,33 @@
             voiceURI: null
         };
         
+        // UPDATED: Expanded language map
         const languageMap = {
-            "en-US": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
             "vi-VN": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" },
+            "en-US": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
+            "es-ES": { name: "Español", ttsName: "es-ES", geminiName: "Spanish", ttsPrefix: "es" },
+            "fr-FR": { name: "Français", ttsName: "fr-FR", geminiName: "French", ttsPrefix: "fr" },
+            "de-DE": { name: "Deutsch", ttsName: "de-DE", geminiName: "German", ttsPrefix: "de" },
+            "it-IT": { name: "Italiano", ttsName: "it-IT", geminiName: "Italian", ttsPrefix: "it" },
+            "ja-JP": { name: "日本語", ttsName: "ja-JP", geminiName: "Japanese", ttsPrefix: "ja" },
+            "ko-KR": { name: "한국어", ttsName: "ko-KR", geminiName: "Korean", ttsPrefix: "ko" },
+            "ru-RU": { name: "Русский", ttsName: "ru-RU", geminiName: "Russian", ttsPrefix: "ru" },
+            "hi-IN": { name: "हिन्दी", ttsName: "hi-IN", geminiName: "Hindi", ttsPrefix: "hi" },
+            "zh-CN": { name: "中文 (普通话)", ttsName: "zh-CN", geminiName: "Mandarin Chinese", ttsPrefix: "zh" },
+            "pt-BR": { name: "Português", ttsName: "pt-BR", geminiName: "Portuguese", ttsPrefix: "pt" },
+            // Simplified codes for targetLangSelect
+            "vi": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" },
             "en": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
-            "vi": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" }
+            "es": { name: "Español", ttsName: "es-ES", geminiName: "Spanish", ttsPrefix: "es" },
+            "fr": { name: "Français", ttsName: "fr-FR", geminiName: "French", ttsPrefix: "fr" },
+            "de": { name: "Deutsch", ttsName: "de-DE", geminiName: "German", ttsPrefix: "de" },
+            "it": { name: "Italiano", ttsName: "it-IT", geminiName: "Italian", ttsPrefix: "it" },
+            "ja": { name: "日本語", ttsName: "ja-JP", geminiName: "Japanese", ttsPrefix: "ja" },
+            "ko": { name: "한국어", ttsName: "ko-KR", geminiName: "Korean", ttsPrefix: "ko" },
+            "ru": { name: "Русский", ttsName: "ru-RU", geminiName: "Russian", ttsPrefix: "ru" },
+            "hi": { name: "हिन्दी", ttsName: "hi-IN", geminiName: "Hindi", ttsPrefix: "hi" },
+            "zh": { name: "中文 (普通话)", ttsName: "zh-CN", geminiName: "Mandarin Chinese", ttsPrefix: "zh" },
+            "pt": { name: "Português", ttsName: "pt-BR", geminiName: "Portuguese", ttsPrefix: "pt" }
         };
 
         // --- Stability Workarounds ---
@@ -523,20 +565,27 @@
             };
         }
         
+        // UPDATED: More scalable voice list population
         function populateVoiceList() {
             const voices = speechSynthesis.getVoices();
-            if (voices.length === 0) return; // Wait for the event to fire
+            if (voices.length === 0) return;
 
-            const allLangs = [...new Set(Object.values(languageMap).map(l => l.ttsPrefix))];
-            voiceSelect.innerHTML = ''; // Clear existing options
-            
-            allLangs.forEach(langPrefix => {
+            const uniqueLangs = Object.values(
+                Object.values(languageMap).reduce((acc, lang) => {
+                    if (lang.ttsPrefix) acc[lang.ttsPrefix] = lang;
+                    return acc;
+                }, {})
+            );
+
+            voiceSelect.innerHTML = '';
+
+            uniqueLangs.forEach(lang => {
                 const optgroup = document.createElement('optgroup');
-                optgroup.label = langPrefix === 'vi' ? 'Giọng Tiếng Việt' : 'Giọng Tiếng Anh';
-                
-                const filteredVoices = voices.filter(voice => voice.lang.startsWith(langPrefix));
-                
-                if(filteredVoices.length > 0) {
+                optgroup.label = `Giọng ${lang.name}`;
+
+                const filteredVoices = voices.filter(voice => voice.lang.startsWith(lang.ttsPrefix));
+
+                if (filteredVoices.length > 0) {
                     filteredVoices.forEach(voice => {
                         const option = document.createElement('option');
                         option.value = voice.voiceURI;
@@ -547,12 +596,11 @@
                 }
             });
             
-            if(appSettings.voiceURI) {
+            if (appSettings.voiceURI && voiceSelect.querySelector(`option[value="${appSettings.voiceURI}"]`)) {
                 voiceSelect.value = appSettings.voiceURI;
             }
         }
         
-        // UPDATED: Smarter speakText function
         function speakText(text, langCode) {
             return new Promise((resolve) => {
                 if (!text || !langCode || !window.speechSynthesis) {
@@ -567,13 +615,11 @@
 
                 let voiceToUse = null;
 
-                // 1. Try to find the user's preferred voice IF it matches the target language
                 const preferredVoice = voices.find(v => v.voiceURI === appSettings.voiceURI);
                 if (preferredVoice && preferredVoice.lang.startsWith(targetLangPrefix)) {
                     voiceToUse = preferredVoice;
                 }
 
-                // 2. If no suitable preferred voice, find the first available default for the target language
                 if (!voiceToUse) {
                     voiceToUse = voices.find(v => v.lang.startsWith(targetLangPrefix));
                 }
@@ -652,10 +698,9 @@
                 const item = textsToSpeak[currentIndex];
                 const utterance = new SpeechSynthesisUtterance(item.text);
                 
-                // Use the smart speakText logic for sequential speaking too
                 const voices = speechSynthesis.getVoices();
                 const targetLangPrefix = languageMap[item.lang]?.ttsPrefix;
-                let voiceToUse = voices.find(v => v.lang.startsWith(targetLangPrefix)); // Find a default
+                let voiceToUse = voices.find(v => v.lang.startsWith(targetLangPrefix));
                 if(voiceToUse) utterance.voice = voiceToUse;
 
                 utterance.lang = languageMap[item.lang]?.ttsName || item.lang;
@@ -700,12 +745,26 @@
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
         micButton.addEventListener('touchend', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
 
+        // UPDATED: More robust language swapping
         function swapLanguages() {
-            const currentSource = sourceLangSelect.value;
-            const currentTarget = targetLangSelect.value;
-            sourceLangSelect.value = (currentTarget === 'en') ? 'en-US' : 'vi-VN';
-            targetLangSelect.value = (currentSource === 'en-US') ? 'en' : 'vi';
-            if (recognition) recognition.lang = sourceLangSelect.value;
+            const currentSourceValue = sourceLangSelect.value;
+            const currentTargetValue = targetLangSelect.value;
+
+            const newSourcePrefix = languageMap[currentTargetValue]?.ttsPrefix;
+            const newTargetPrefix = languageMap[currentSourceValue]?.ttsPrefix;
+
+            const newSourceEntry = Object.entries(languageMap).find(([key, value]) => value.ttsPrefix === newSourcePrefix && key.includes('-'));
+            const newSourceValue = newSourceEntry ? newSourceEntry[0] : null;
+
+            if (newSourceValue && newTargetPrefix) {
+                sourceLangSelect.value = newSourceValue;
+                targetLangSelect.value = newTargetPrefix;
+                if (recognition) {
+                    recognition.lang = sourceLangSelect.value;
+                }
+            } else {
+                console.error("Could not swap languages:", currentSourceValue, currentTargetValue);
+            }
         }
 
         swapLangButton.addEventListener('click', () => { 
