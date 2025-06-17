@@ -186,12 +186,12 @@
                         <label for="autoSpeakToggle" class="text-gray-700">Tự động đọc bản dịch</label>
                         <label class="switch"><input type="checkbox" id="autoSpeakToggle"><span class="slider"></span></label>
                     </div>
-                    <!-- NEW: Voice Selection Dropdown -->
                     <div>
-                        <label for="voiceSelect" class="text-gray-700 font-medium">Giọng đọc bản dịch</label>
+                        <label for="voiceSelect" class="text-gray-700 font-medium">Giọng đọc (ưu tiên)</label>
                         <select id="voiceSelect" class="mt-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                             <option>Đang tải giọng đọc...</option>
                         </select>
+                         <p class="text-xs text-gray-500 mt-1">Sẽ tự động chọn giọng phù hợp nếu không có lựa chọn.</p>
                     </div>
                     <div>
                         <label class="text-gray-700 font-medium">Chế độ ghi âm</label>
@@ -307,7 +307,7 @@
         const settingsPanel = document.getElementById('settingsPanel');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
         const autoSpeakToggle = document.getElementById('autoSpeakToggle');
-        const voiceSelect = document.getElementById('voiceSelect'); // NEW: Voice selector
+        const voiceSelect = document.getElementById('voiceSelect');
         const recordingModeRadios = document.querySelectorAll('input[name="recordingMode"]');
         const bilingualToggle = document.getElementById('bilingualToggle');
         const bilingualToggleContainer = document.getElementById('bilingualToggleContainer');
@@ -361,13 +361,13 @@
         let currentListenBubbleId = null;
         let finalTranscriptForBubble = '';
         let unsubscribeHistory = null;
-        let chatSession = null; // For contextual translation
+        let chatSession = null;
         
         let appSettings = {
             autoSpeak: false,
             recordingMode: 'hold',
             bilingualMode: false,
-            voiceURI: null // NEW: To store the selected voice
+            voiceURI: null
         };
         
         const languageMap = {
@@ -523,53 +523,69 @@
             };
         }
         
-        // NEW: Function to populate voice list based on target language
         function populateVoiceList() {
             const voices = speechSynthesis.getVoices();
-            const targetLangPrefix = languageMap[targetLangSelect.value]?.ttsPrefix;
-            if (!targetLangPrefix) return;
+            if (voices.length === 0) return; // Wait for the event to fire
 
-            const filteredVoices = voices.filter(voice => voice.lang.startsWith(targetLangPrefix));
+            const allLangs = [...new Set(Object.values(languageMap).map(l => l.ttsPrefix))];
             voiceSelect.innerHTML = ''; // Clear existing options
-
-            if (filteredVoices.length === 0) {
-                voiceSelect.innerHTML = '<option value="">Không có giọng đọc phù hợp</option>';
-                return;
-            }
-
-            filteredVoices.forEach(voice => {
-                const option = document.createElement('option');
-                option.value = voice.voiceURI;
-                option.textContent = `${voice.name} (${voice.lang})`;
-                voiceSelect.appendChild(option);
+            
+            allLangs.forEach(langPrefix => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = langPrefix === 'vi' ? 'Giọng Tiếng Việt' : 'Giọng Tiếng Anh';
+                
+                const filteredVoices = voices.filter(voice => voice.lang.startsWith(langPrefix));
+                
+                if(filteredVoices.length > 0) {
+                    filteredVoices.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice.voiceURI;
+                        option.textContent = voice.name;
+                        optgroup.appendChild(option);
+                    });
+                    voiceSelect.appendChild(optgroup);
+                }
             });
             
-            // Restore saved voice selection
             if(appSettings.voiceURI) {
                 voiceSelect.value = appSettings.voiceURI;
             }
         }
         
+        // UPDATED: Smarter speakText function
         function speakText(text, langCode) {
             return new Promise((resolve) => {
                 if (!text || !langCode || !window.speechSynthesis) {
                     resolve();
                     return;
                 }
-                const estimatedTime = (text.length / 10) * 1000 + 2000;
-                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 3000));
+                
                 speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
-
-                // NEW: Find and set the selected voice
-                const selectedVoiceURI = appSettings.voiceURI;
                 const voices = speechSynthesis.getVoices();
-                const selectedVoice = voices.find(v => v.voiceURI === selectedVoiceURI);
-                if (selectedVoice) {
-                    utterance.voice = selectedVoice;
+                const targetLangPrefix = languageMap[langCode]?.ttsPrefix;
+
+                let voiceToUse = null;
+
+                // 1. Try to find the user's preferred voice IF it matches the target language
+                const preferredVoice = voices.find(v => v.voiceURI === appSettings.voiceURI);
+                if (preferredVoice && preferredVoice.lang.startsWith(targetLangPrefix)) {
+                    voiceToUse = preferredVoice;
+                }
+
+                // 2. If no suitable preferred voice, find the first available default for the target language
+                if (!voiceToUse) {
+                    voiceToUse = voices.find(v => v.lang.startsWith(targetLangPrefix));
+                }
+                
+                if (voiceToUse) {
+                    utterance.voice = voiceToUse;
                 }
                 
                 utterance.lang = languageMap[langCode]?.ttsName || langCode;
+                
+                const estimatedTime = (text.length / 10) * 1000 + 2000;
+                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 3000));
                 utterance.onend = () => { clearTimeout(safetyTimeout); resolve(); };
                 utterance.onerror = (e) => { console.error("Speech synthesis error:", e); clearTimeout(safetyTimeout); resolve(); };
                 speechSynthesis.speak(utterance);
@@ -635,6 +651,13 @@
                 if (currentIndex >= textsToSpeak.length) return;
                 const item = textsToSpeak[currentIndex];
                 const utterance = new SpeechSynthesisUtterance(item.text);
+                
+                // Use the smart speakText logic for sequential speaking too
+                const voices = speechSynthesis.getVoices();
+                const targetLangPrefix = languageMap[item.lang]?.ttsPrefix;
+                let voiceToUse = voices.find(v => v.lang.startsWith(targetLangPrefix)); // Find a default
+                if(voiceToUse) utterance.voice = voiceToUse;
+
                 utterance.lang = languageMap[item.lang]?.ttsName || item.lang;
                 utterance.onend = () => { currentIndex++; speakNext(); };
                 speechSynthesis.speak(utterance);
@@ -683,7 +706,6 @@
             sourceLangSelect.value = (currentTarget === 'en') ? 'en-US' : 'vi-VN';
             targetLangSelect.value = (currentSource === 'en-US') ? 'en' : 'vi';
             if (recognition) recognition.lang = sourceLangSelect.value;
-            populateVoiceList(); // NEW: Update voice list on language swap
         }
 
         swapLangButton.addEventListener('click', () => { 
@@ -692,8 +714,7 @@
             startNewChatSession();
         });
         sourceLangSelect.addEventListener('change', () => { if (recognition) { recognition.lang = sourceLangSelect.value; } });
-        targetLangSelect.addEventListener('change', populateVoiceList); // NEW: Update voice list when target lang changes
-        voiceSelect.addEventListener('change', (e) => { // NEW: Save selected voice
+        voiceSelect.addEventListener('change', (e) => {
             appSettings.voiceURI = e.target.value;
             saveSettings();
         });
@@ -730,7 +751,6 @@
             autoSpeakToggle.checked = appSettings.autoSpeak;
             bilingualToggle.checked = appSettings.bilingualMode;
             document.querySelector(`input[name="recordingMode"][value="${appSettings.recordingMode}"]`).checked = true;
-            // The voice selection will be applied in populateVoiceList after voices are loaded
             updateMicInstruction();
             updateBilingualToggleState();
         }
@@ -811,9 +831,8 @@
         // --- Initial Load ---
         loadSettings();
         initializeSpeechRecognition();
-        startNewChatSession(); // Start the first session on load
+        startNewChatSession();
 
-        // NEW: Initial population of voice list and setting up the listener
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = populateVoiceList;
         }
