@@ -293,9 +293,6 @@
                 <button id="sendButton" class="w-12 h-12 flex-shrink-0 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600" title="Gửi" aria-label="Gửi văn bản dịch">
                      <i class="fas fa-paper-plane"></i>
                 </button>
-                <button id="pauseButton" class="w-12 h-12 flex-shrink-0 bg-yellow-500 text-white rounded-full items-center justify-center hover:bg-yellow-600 hidden" title="Tạm dừng" aria-label="Tạm dừng hội thoại">
-                    <i class="fas fa-pause"></i>
-                </button>
                 <button id="micButton" class="mic-button w-12 h-12 flex-shrink-0 bg-blue-600 text-white rounded-full flex items-center justify-center" title="Nói để dịch" aria-label="Nói để dịch">
                     <i class="fas fa-microphone-alt text-xl"></i>
                 </button>
@@ -324,7 +321,6 @@
         const textInput = document.getElementById('textInput');
         const sendButton = document.getElementById('sendButton');
         const newChatBtn = document.getElementById('newChatBtn');
-        const pauseButton = document.getElementById('pauseButton');
         
         // Panel & Settings Elements
         const settingsToggleBtn = document.getElementById('settingsToggleBtn');
@@ -382,7 +378,6 @@
         let recognition;
         let isRecording = false; 
         let isContinuousModeActive = false; 
-        let isPaused = false;
         let currentListenBubbleId = null;
         let finalTranscriptForBubble = '';
         let unsubscribeHistory = null;
@@ -408,6 +403,7 @@
             "hi-IN": { name: "हिन्दी", ttsName: "hi-IN", geminiName: "Hindi", ttsPrefix: "hi" },
             "zh-CN": { name: "中文 (普通话)", ttsName: "zh-CN", geminiName: "Mandarin Chinese", ttsPrefix: "zh" },
             "pt-BR": { name: "Português", ttsName: "pt-BR", geminiName: "Portuguese", ttsPrefix: "pt" },
+            // Simplified codes for targetLangSelect
             "vi": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" },
             "en": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
             "es": { name: "Español", ttsName: "es-ES", geminiName: "Spanish", ttsPrefix: "es" },
@@ -523,29 +519,33 @@
                 }
             };
             
+            // UPDATED: More resilient error handling
             recognition.onerror = (event) => {
                 const listeningBubble = document.getElementById(currentListenBubbleId);
                 if (listeningBubble) listeningBubble.parentElement.remove();
                 currentListenBubbleId = null;
 
+                // Stop continuous mode only on fatal errors
                 if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                     permissionOverlay.style.display = 'flex';
                     isContinuousModeActive = false; 
                 } else if (event.error === 'no-speech') {
-                    // This is a common, non-fatal error. We don't create a bubble for it to keep the UI clean.
-                    console.log("No speech detected.");
+                    createBubble("Tôi không nghe rõ bạn nói. Vui lòng thử lại.", 'info');
                 } else {
+                    // For other errors (e.g., 'network'), just log it and let onend handle the restart.
                     console.warn("Speech Recognition Warning:", event.error);
+                    createBubble(`Lỗi tạm thời: ${event.error}. Thử lại...`, 'info');
                 }
                 
-                isRecording = false; // Ensure recording state is reset
+                micButton.classList.remove('recording');
+                micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
+                isRecording = false;
+
+                // Let onend handle the next step
             };
 
             recognition.onend = async () => {
                 isRecording = false;
-                micButton.classList.remove('recording');
-                micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
-                
                 const transcriptToProcess = finalTranscriptForBubble.trim();
                 const listeningBubble = document.getElementById(currentListenBubbleId);
                 let processedSuccessfully = false;
@@ -560,11 +560,17 @@
                 currentListenBubbleId = null;
 
                 if (appSettings.recordingMode === 'continuous' && isContinuousModeActive) {
-                    startNextTurn(processedSuccessfully);
+                    if (appSettings.bilingualMode && processedSuccessfully) {
+                         swapLanguages();
+                         createBubble(`Bây giờ đang nghe bằng ${languageMap[sourceLangSelect.value].name}...`, 'info');
+                         setTimeout(() => { if (isContinuousModeActive) recognition.start(); }, 500);
+                    } else {
+                         setTimeout(() => { if (isContinuousModeActive) recognition.start(); }, 200);
+                    }
                 } else {
                     isContinuousModeActive = false;
-                    updateMicInstruction();
-                    pauseButton.classList.add('hidden');
+                    micButton.classList.remove('recording');
+                    micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
                 }
             };
         }
@@ -633,8 +639,8 @@
                 
                 utterance.lang = languageMap[langCode]?.ttsName || langCode;
                 
-                const estimatedTime = (text.length / 10) * 1000 + 1500; // Reduced safety margin
-                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 2000));
+                const estimatedTime = (text.length / 10) * 1000 + 2000;
+                const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 3000));
                 utterance.onend = () => { clearTimeout(safetyTimeout); resolve(); };
                 utterance.onerror = (e) => { console.error("Speech synthesis error:", e); clearTimeout(safetyTimeout); resolve(); };
                 speechSynthesis.speak(utterance);
@@ -683,29 +689,6 @@
             }
         }
         
-        function startNextTurn(processedLastTurn) {
-            if (isPaused || !isContinuousModeActive) {
-                return;
-            }
-
-            if (appSettings.bilingualMode && processedLastTurn) {
-                swapLanguages();
-            }
-
-            micInstruction.textContent = `Đang nghe bằng ${languageMap[sourceLangSelect.value].name}...`;
-
-            // Minimal delay to prevent accidental re-trigger and allow UI update
-            setTimeout(() => {
-                if (isContinuousModeActive && !isPaused && !isRecording) {
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        console.error("Error restarting recognition:", e);
-                    }
-                }
-            }, 150); // Reduced delay
-        }
-
         async function saveToHistory(original, translated, sourceLang, targetLang) {
              if (!auth.currentUser) return;
              try {
@@ -757,38 +740,15 @@
                 case 'toggle': isRecording ? recognition.stop() : recognition.start(); break;
                 case 'continuous':
                     if (isContinuousModeActive) {
-                        isContinuousModeActive = false;
-                        isPaused = false; // Reset pause state
-                        pauseButton.classList.add('hidden');
+                        isContinuousModeActive = false; 
                         if (isRecording) recognition.stop();
                     } else {
                         isContinuousModeActive = true; 
-                        isPaused = false;
-                        pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
-                        pauseButton.classList.remove('hidden');
-                        if (!isRecording) startNextTurn(true);
+                        if (!isRecording) recognition.start();
                     }
                     break;
             }
         });
-
-        pauseButton.addEventListener('click', () => {
-            if (!isContinuousModeActive) return;
-            isPaused = !isPaused;
-
-            if (isPaused) {
-                if (isRecording) recognition.stop();
-                speechSynthesis.cancel();
-                pauseButton.innerHTML = '<i class="fas fa-play"></i>';
-                pauseButton.title = "Tiếp tục";
-                micInstruction.textContent = "Đã tạm dừng. Nhấn Play để tiếp tục.";
-            } else {
-                pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
-                pauseButton.title = "Tạm dừng";
-                startNextTurn(false); // Resume without swapping language
-            }
-        });
-
         micButton.addEventListener('mousedown', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } });
         micButton.addEventListener('mouseup', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
@@ -881,11 +841,7 @@
         bilingualToggle.addEventListener('change', (e) => { appSettings.bilingualMode = e.target.checked; saveSettings(); });
         recordingModeRadios.forEach(radio => radio.addEventListener('change', (e) => {
             if (e.target.checked) {
-                if (isContinuousModeActive) { // Stop continuous mode if mode is changed
-                    isContinuousModeActive = false;
-                    pauseButton.classList.add('hidden');
-                    if (isRecording) recognition.stop();
-                }
+                if (isRecording) { isContinuousModeActive = false; recognition.stop(); }
                 appSettings.recordingMode = e.target.value;
                 updateMicInstruction();
                 updateBilingualToggleState();
