@@ -7,8 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-	<link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2563eb">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -72,6 +70,15 @@
             font-style: italic;
             max-width: 90%;
             margin: 4px auto;
+        }
+        .gemini-feature-bubble {
+            background-color: #e0f2fe; /* Light blue background */
+            color: #0c4a6e;
+            border-bottom-left-radius: 4px;
+            border: 1px solid #bae6fd;
+            margin-top: -8px; /* Slightly overlap previous bubble */
+            max-width: 72%; /* Slightly smaller */
+            align-self: flex-start;
         }
 
         .bubble-actions {
@@ -306,12 +313,6 @@
 
     <!-- Firebase SDK -->
     <script type="module">
-	if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js')
-    .then(() => console.log("✅ Service Worker đã đăng ký"))
-    .catch(err => console.error("❌ Không thể đăng ký Service Worker", err));
-}
-
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
@@ -411,7 +412,6 @@
             "hi-IN": { name: "हिन्दी", ttsName: "hi-IN", geminiName: "Hindi", ttsPrefix: "hi" },
             "zh-CN": { name: "中文 (普通话)", ttsName: "zh-CN", geminiName: "Mandarin Chinese", ttsPrefix: "zh" },
             "pt-BR": { name: "Português", ttsName: "pt-BR", geminiName: "Portuguese", ttsPrefix: "pt" },
-            // Simplified codes for targetLangSelect
             "vi": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" },
             "en": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
             "es": { name: "Español", ttsName: "es-ES", geminiName: "Spanish", ttsPrefix: "es" },
@@ -449,7 +449,7 @@
             conversationView.scrollTop = conversationView.scrollHeight;
         }
 
-        function createBubble(text, type, lang) {
+        function createBubble(text, type, lang, originalTextForGemini = '') {
             const bubbleId = `bubble-${Date.now()}-${Math.random()}`;
             const bubbleWrapper = document.createElement('div');
             let bubbleClass = '';
@@ -458,17 +458,34 @@
                 case 'user': bubbleWrapper.className = 'flex justify-end'; bubbleClass = 'user-bubble'; break;
                 case 'assistant': bubbleWrapper.className = 'flex justify-start'; bubbleClass = 'assistant-bubble'; break;
                 case 'info': bubbleWrapper.className = 'flex justify-center'; bubbleClass = 'info-bubble'; break;
+                case 'gemini-feature': bubbleWrapper.className = 'flex justify-start'; bubbleClass = 'gemini-feature-bubble'; break;
             }
             
             const bubble = document.createElement('div');
             bubble.id = bubbleId;
             bubble.className = `bubble ${bubbleClass}`;
 
-            let actionsHTML = '';
-            if (type === 'assistant') actionsHTML = `<button class="tts-button p-1 hover:bg-black/10 rounded-full" data-lang="${lang}" title="Nghe lại" aria-label="Nghe lại"><i class="fas fa-volume-up text-xs"></i></button>`;
-            if (type === 'user' || type === 'assistant') actionsHTML += `<button class="copy-button p-1 hover:bg-black/10 rounded-full" title="Sao chép" aria-label="Sao chép"><i class="fas fa-copy text-xs"></i></button>`;
+            if (type === 'assistant') {
+                bubble.dataset.translatedText = text;
+                bubble.dataset.originalText = originalTextForGemini;
+                bubble.dataset.sourceLang = sourceLangSelect.value;
+                bubble.dataset.targetLang = targetLangSelect.value;
+            }
 
-            bubble.innerHTML = `<div class="text-content">${text}</div>${actionsHTML ? `<div class="bubble-actions flex items-center justify-end space-x-2 mt-2">${actionsHTML}</div>` : ''}`;
+            let actionsHTML = '';
+            if (type === 'assistant') {
+                 actionsHTML = `
+                    <button class="tts-button p-1 hover:bg-black/10 rounded-full" title="Nghe lại" aria-label="Nghe lại"><i class="fas fa-volume-up text-xs"></i></button>
+                    <button class="copy-button p-1 hover:bg-black/10 rounded-full" title="Sao chép" aria-label="Sao chép"><i class="fas fa-copy text-xs"></i></button>
+                    <button class="refine-button p-1 hover:bg-black/10 rounded-full" title="✨ Tự nhiên hóa" aria-label="Tự nhiên hóa câu dịch"><i class="fas fa-magic-wand-sparkles text-xs text-purple-500"></i></button>
+                    <button class="explain-button p-1 hover:bg-black/10 rounded-full" title="? Giải thích" aria-label="Giải thích bản dịch"><i class="fas fa-question-circle text-xs text-blue-500"></i></button>
+                 `;
+            } else if (type === 'user') {
+                actionsHTML = `<button class="copy-button p-1 hover:bg-black/10 rounded-full" title="Sao chép" aria-label="Sao chép"><i class="fas fa-copy text-xs"></i></button>`;
+            }
+
+
+            bubble.innerHTML = `<div class="text-content">${text}</div>${actionsHTML ? `<div class="bubble-actions flex items-center justify-end space-x-1 mt-1">${actionsHTML}</div>` : ''}`;
             
             bubbleWrapper.appendChild(bubble);
             conversationView.appendChild(bubbleWrapper);
@@ -527,29 +544,21 @@
                 }
             };
             
-            // UPDATED: More resilient error handling
             recognition.onerror = (event) => {
                 const listeningBubble = document.getElementById(currentListenBubbleId);
                 if (listeningBubble) listeningBubble.parentElement.remove();
                 currentListenBubbleId = null;
 
-                // Stop continuous mode only on fatal errors
                 if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
                     permissionOverlay.style.display = 'flex';
                     isContinuousModeActive = false; 
                 } else if (event.error === 'no-speech') {
-                    createBubble("Tôi không nghe rõ bạn nói. Vui lòng thử lại.", 'info');
+                    console.log("No speech detected.");
                 } else {
-                    // For other errors (e.g., 'network'), just log it and let onend handle the restart.
                     console.warn("Speech Recognition Warning:", event.error);
-                    createBubble(`Lỗi tạm thời: ${event.error}. Thử lại...`, 'info');
                 }
                 
-                micButton.classList.remove('recording');
-                micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
                 isRecording = false;
-
-                // Let onend handle the next step
             };
 
             recognition.onend = async () => {
@@ -568,13 +577,7 @@
                 currentListenBubbleId = null;
 
                 if (appSettings.recordingMode === 'continuous' && isContinuousModeActive) {
-                    if (appSettings.bilingualMode && processedSuccessfully) {
-                         swapLanguages();
-                         createBubble(`Bây giờ đang nghe bằng ${languageMap[sourceLangSelect.value].name}...`, 'info');
-                         setTimeout(() => { if (isContinuousModeActive) recognition.start(); }, 500);
-                    } else {
-                         setTimeout(() => { if (isContinuousModeActive) recognition.start(); }, 200);
-                    }
+                    startNextTurn(processedSuccessfully);
                 } else {
                     isContinuousModeActive = false;
                     micButton.classList.remove('recording');
@@ -661,7 +664,7 @@
                 return;
             }
 
-            const assistantBubbleId = createBubble('<span class="spinner"></span>', 'assistant', targetLangSelect.value);
+            const assistantBubbleId = createBubble('<span class="spinner"></span>', 'assistant', targetLangSelect.value, text);
             
             try {
                 const sourceLangName = languageMap[sourceLangSelect.value].geminiName;
@@ -675,8 +678,13 @@
 
                 const assistantBubble = document.getElementById(assistantBubbleId);
                 if (assistantBubble) {
-                    assistantBubble.querySelector('.text-content').textContent = translatedText;
-                    
+                    const bubbleContent = assistantBubble.querySelector('.text-content');
+                    bubbleContent.textContent = translatedText;
+                    assistantBubble.dataset.translatedText = translatedText;
+                    assistantBubble.dataset.originalText = text;
+                    assistantBubble.dataset.sourceLang = sourceLangSelect.value;
+                    assistantBubble.dataset.targetLang = targetLangSelect.value;
+
                     if (appSettings.autoSpeak && translatedText) {
                         await speakText(translatedText, targetLangSelect.value);
                     }
@@ -697,6 +705,23 @@
             }
         }
         
+        function startNextTurn(processedLastTurn) {
+            if (appSettings.bilingualMode && processedLastTurn) {
+                swapLanguages();
+            }
+            createBubble(`Bây giờ đang nghe bằng ${languageMap[sourceLangSelect.value].name}...`, 'info');
+            setTimeout(() => {
+                if (isContinuousModeActive && !isRecording) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.error("Error restarting recognition:", e);
+                    }
+                }
+            }, 500);
+        }
+
+
         async function saveToHistory(original, translated, sourceLang, targetLang) {
              if (!auth.currentUser) return;
              try {
@@ -726,6 +751,64 @@
             }
             speakNext();
         }
+
+        // --- NEW Gemini Feature Functions ---
+        async function handleRefine(targetBubble) {
+            const { translatedText, targetLang } = targetBubble.dataset;
+            if (!translatedText || !targetLang) return;
+
+            const targetLangName = languageMap[targetLang]?.geminiName;
+            const prompt = `Rephrase the following ${targetLangName} text to sound more natural and fluent, like a native speaker would say it. Output ONLY the rephrased text, without any additional explanations or quotation marks. The text is: "${translatedText}"`;
+            
+            const featureBubbleId = createBubble(`✨ <span class="spinner ml-2"></span>`, 'gemini-feature');
+
+            try {
+                const result = await generativeModel.generateContent(prompt);
+                const response = await result.response;
+                const refinedText = response.text().trim();
+                
+                const featureBubble = document.getElementById(featureBubbleId);
+                if (featureBubble) {
+                    featureBubble.querySelector('.text-content').innerHTML = `✨ <strong>Tự nhiên hơn:</strong> ${refinedText}`;
+                    if (appSettings.autoSpeak) {
+                        await speakText(refinedText, targetLang);
+                    }
+                }
+            } catch(e) {
+                console.error("Refine error:", e);
+                const featureBubble = document.getElementById(featureBubbleId);
+                if(featureBubble) featureBubble.querySelector('.text-content').textContent = 'Lỗi khi tinh chỉnh câu văn.';
+            }
+        }
+        
+        async function handleExplain(targetBubble) {
+            const { originalText, translatedText, sourceLang, targetLang } = targetBubble.dataset;
+            if (!originalText || !translatedText || !sourceLang || !targetLang) return;
+
+            const sourceLangName = languageMap[sourceLang]?.geminiName;
+            const targetLangName = languageMap[targetLang]?.geminiName;
+            const explanationLangName = languageMap[sourceLangSelect.value]?.geminiName; // Explain in the user's current source language
+
+            const prompt = `Explain the translation from the ${sourceLangName} phrase "${originalText}" to the ${targetLangName} phrase "${translatedText}". Focus on any nuances, idiomatic expressions, or cultural context. Provide the explanation in ${explanationLangName}.`;
+
+            const featureBubbleId = createBubble(`? <span class="spinner ml-2"></span>`, 'gemini-feature');
+
+            try {
+                const result = await generativeModel.generateContent(prompt);
+                const response = await result.response;
+                const explanationText = response.text().trim();
+
+                const featureBubble = document.getElementById(featureBubbleId);
+                if (featureBubble) {
+                     featureBubble.querySelector('.text-content').innerHTML = `? <strong>Giải thích:</strong> ${explanationText}`;
+                }
+            } catch(e) {
+                console.error("Explain error:", e);
+                const featureBubble = document.getElementById(featureBubbleId);
+                if(featureBubble) featureBubble.querySelector('.text-content').textContent = 'Lỗi khi lấy giải thích.';
+            }
+        }
+
 
         // --- Event Listeners ---
         function handleSendFromInput() {
@@ -762,24 +845,28 @@
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
         micButton.addEventListener('touchend', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
 
+        // REFACTORED FUNCTION
         function swapLanguages() {
-            const currentSourceValue = sourceLangSelect.value;
-            const currentTargetValue = targetLangSelect.value;
+            const oldSourceValue = sourceLangSelect.value; 
+            const oldTargetValue = targetLangSelect.value;
+            
+            // Find the full locale code (e.g., 'en-US') for the new source language
+            const newSourcePrefix = languageMap[oldTargetValue]?.ttsPrefix;
+            const newSourceOption = Array.from(sourceLangSelect.options).find(opt => 
+                languageMap[opt.value]?.ttsPrefix === newSourcePrefix
+            );
 
-            const newSourcePrefix = languageMap[currentTargetValue]?.ttsPrefix;
-            const newTargetPrefix = languageMap[currentSourceValue]?.ttsPrefix;
-
-            const newSourceEntry = Object.entries(languageMap).find(([key, value]) => value.ttsPrefix === newSourcePrefix && key.includes('-'));
-            const newSourceValue = newSourceEntry ? newSourceEntry[0] : null;
-
-            if (newSourceValue && newTargetPrefix) {
-                sourceLangSelect.value = newSourceValue;
+            // Find the simple code (e.g., 'vi') for the new target language
+            const newTargetPrefix = languageMap[oldSourceValue]?.ttsPrefix;
+            
+            if (newSourceOption && newTargetPrefix) {
+                sourceLangSelect.value = newSourceOption.value;
                 targetLangSelect.value = newTargetPrefix;
                 if (recognition) {
                     recognition.lang = sourceLangSelect.value;
                 }
             } else {
-                console.error("Could not swap languages:", currentSourceValue, currentTargetValue);
+                console.error("Could not find matching languages to swap.", { oldSourceValue, oldTargetValue });
             }
         }
 
@@ -799,8 +886,13 @@
         conversationView.addEventListener('click', (e) => {
             const ttsButton = e.target.closest('.tts-button');
             const copyButton = e.target.closest('.copy-button');
-            if (ttsButton) speakText(ttsButton.closest('.bubble').querySelector('.text-content').textContent, ttsButton.dataset.lang);
+            const refineButton = e.target.closest('.refine-button');
+            const explainButton = e.target.closest('.explain-button');
+            
+            if (ttsButton) speakText(ttsButton.closest('.bubble').querySelector('.text-content').textContent, ttsButton.closest('.assistant-bubble').dataset.targetLang);
             if (copyButton) navigator.clipboard.writeText(copyButton.closest('.bubble').querySelector('.text-content').textContent).then(() => showUIMessage("Đã sao chép!", 1500));
+            if (refineButton) handleRefine(refineButton.closest('.assistant-bubble'));
+            if (explainButton) handleExplain(explainButton.closest('.assistant-bubble'));
         });
         
         translationHistoryDiv.addEventListener('click', (e) => {
@@ -813,7 +905,7 @@
             if (reuseBtn) { 
                 startNewChatSession();
                 createBubble(original, 'user', sourceLang);
-                createBubble(translated, 'assistant', targetLang); 
+                createBubble(translated, 'assistant', targetLang, original); 
                 closeAllPanels(); 
             }
         });
@@ -849,7 +941,10 @@
         bilingualToggle.addEventListener('change', (e) => { appSettings.bilingualMode = e.target.checked; saveSettings(); });
         recordingModeRadios.forEach(radio => radio.addEventListener('change', (e) => {
             if (e.target.checked) {
-                if (isRecording) { isContinuousModeActive = false; recognition.stop(); }
+                if (isContinuousModeActive) { 
+                    isContinuousModeActive = false;
+                    if (isRecording) recognition.stop();
+                }
                 appSettings.recordingMode = e.target.value;
                 updateMicInstruction();
                 updateBilingualToggleState();
@@ -916,3 +1011,4 @@
     </script>
 </body>
 </html>
+
