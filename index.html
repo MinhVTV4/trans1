@@ -390,7 +390,6 @@
             voiceURI: null
         };
         
-        // UPDATED: Expanded language map
         const languageMap = {
             "vi-VN": { name: "Tiếng Việt", ttsName: "vi-VN", geminiName: "Vietnamese", ttsPrefix: "vi" },
             "en-US": { name: "English", ttsName: "en-US", geminiName: "English", ttsPrefix: "en" },
@@ -520,18 +519,29 @@
                 }
             };
             
+            // UPDATED: More resilient error handling
             recognition.onerror = (event) => {
                 const listeningBubble = document.getElementById(currentListenBubbleId);
                 if (listeningBubble) listeningBubble.parentElement.remove();
                 currentListenBubbleId = null;
 
-                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') permissionOverlay.style.display = 'flex';
-                else if (event.error === 'no-speech') createBubble("Tôi không nghe rõ bạn nói. Vui lòng thử lại.", 'info');
+                // Stop continuous mode only on fatal errors
+                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    permissionOverlay.style.display = 'flex';
+                    isContinuousModeActive = false; 
+                } else if (event.error === 'no-speech') {
+                    createBubble("Tôi không nghe rõ bạn nói. Vui lòng thử lại.", 'info');
+                } else {
+                    // For other errors (e.g., 'network'), just log it and let onend handle the restart.
+                    console.warn("Speech Recognition Warning:", event.error);
+                    createBubble(`Lỗi tạm thời: ${event.error}. Thử lại...`, 'info');
+                }
                 
-                if (event.error !== 'no-speech') isContinuousModeActive = false;
-                 micButton.classList.remove('recording');
-                 micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
-                 isRecording = false;
+                micButton.classList.remove('recording');
+                micButton.querySelector('i').className = 'fas fa-microphone-alt text-xl';
+                isRecording = false;
+
+                // Let onend handle the next step
             };
 
             recognition.onend = async () => {
@@ -565,7 +575,6 @@
             };
         }
         
-        // UPDATED: More scalable voice list population
         function populateVoiceList() {
             const voices = speechSynthesis.getVoices();
             if (voices.length === 0) return;
@@ -745,7 +754,6 @@
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
         micButton.addEventListener('touchend', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
 
-        // UPDATED: More robust language swapping
         function swapLanguages() {
             const currentSourceValue = sourceLangSelect.value;
             const currentTargetValue = targetLangSelect.value;
