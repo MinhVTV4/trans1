@@ -88,6 +88,10 @@
         .bubble:hover .bubble-actions {
             opacity: 1;
         }
+        
+        .speaker-btn.muted i {
+            color: #9ca3af; /* Gray color for muted icon */
+        }
 
         .message-box {
             position: fixed;
@@ -192,19 +196,6 @@
                  <h3 class="text-lg font-semibold text-gray-700 mb-6 text-center">Cài đặt</h3>
                  <div class="space-y-6">
                     <div>
-                        <span class="text-gray-700 font-medium">Tự động đọc</span>
-                        <div class="mt-2 space-y-3">
-                            <div class="flex items-center justify-between">
-                                <label for="autoSpeakSourceToggle" id="autoSpeakSourceLabel" class="text-gray-700">Đọc ngôn ngữ nguồn</label>
-                                <label class="switch"><input type="checkbox" id="autoSpeakSourceToggle"><span class="slider"></span></label>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label for="autoSpeakTargetToggle" id="autoSpeakTargetLabel" class="text-gray-700">Đọc bản dịch</label>
-                                <label class="switch"><input type="checkbox" id="autoSpeakTargetToggle"><span class="slider"></span></label>
-                            </div>
-                        </div>
-                    </div>
-                    <div>
                         <label for="voiceSelect" class="text-gray-700 font-medium">Giọng đọc (ưu tiên)</label>
                         <select id="voiceSelect" class="mt-2 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                             <option>Đang tải giọng đọc...</option>
@@ -269,7 +260,7 @@
         <!-- Controls Area -->
         <div class="px-1 sm:px-4 pt-3 border-t border-gray-200">
              <div class="flex items-center justify-between mb-3">
-                <div class="language-select text-center">
+                <div class="flex items-center flex-1">
                     <select id="sourceLangSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                         <option value="vi-VN" selected>Tiếng Việt</option>
                         <option value="en-US">English</option>
@@ -284,11 +275,14 @@
                         <option value="zh-CN">中文 (普通话)</option>
                         <option value="pt-BR">Português</option>
                     </select>
+                    <button id="sourceLangSpeakerBtn" class="speaker-btn p-2 rounded-full hover:bg-gray-200 ml-1" title="Bật/Tắt đọc ngôn ngữ này">
+                        <i class="fas fa-volume-up text-gray-600"></i>
+                    </button>
                 </div>
-                <button id="swapLangButton" class="p-3 rounded-full hover:bg-gray-200" title="Đảo chiều ngôn ngữ" aria-label="Đảo chiều ngôn ngữ">
+                <button id="swapLangButton" class="p-3 mx-1 rounded-full hover:bg-gray-200" title="Đảo chiều ngôn ngữ" aria-label="Đảo chiều ngôn ngữ">
                     <i class="fas fa-exchange-alt text-lg text-gray-600"></i>
                 </button>
-                <div class="language-select text-center">
+                <div class="flex items-center flex-1">
                     <select id="targetLangSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                         <option value="en" selected>English</option>
                         <option value="vi">Tiếng Việt</option>
@@ -303,6 +297,9 @@
                         <option value="zh">中文 (普通话)</option>
                         <option value="pt">Português</option>
                     </select>
+                    <button id="targetLangSpeakerBtn" class="speaker-btn p-2 rounded-full hover:bg-gray-200 ml-1" title="Bật/Tắt đọc ngôn ngữ này">
+                        <i class="fas fa-volume-up text-gray-600"></i>
+                    </button>
                 </div>
              </div>
             
@@ -334,6 +331,8 @@
         const messageBox = document.getElementById('messageBox');
         const sourceLangSelect = document.getElementById('sourceLangSelect');
         const targetLangSelect = document.getElementById('targetLangSelect');
+        const sourceLangSpeakerBtn = document.getElementById('sourceLangSpeakerBtn');
+        const targetLangSpeakerBtn = document.getElementById('targetLangSpeakerBtn');
         const swapLangButton = document.getElementById('swapLangButton');
         const permissionOverlay = document.getElementById('permission-overlay');
         const textInput = document.getElementById('textInput');
@@ -344,10 +343,6 @@
         const settingsToggleBtn = document.getElementById('settingsToggleBtn');
         const settingsPanel = document.getElementById('settingsPanel');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-        const autoSpeakSourceToggle = document.getElementById('autoSpeakSourceToggle');
-        const autoSpeakTargetToggle = document.getElementById('autoSpeakTargetToggle');
-        const autoSpeakSourceLabel = document.getElementById('autoSpeakSourceLabel');
-        const autoSpeakTargetLabel = document.getElementById('autoSpeakTargetLabel');
         const voiceSelect = document.getElementById('voiceSelect');
         const recordingModeRadios = document.querySelectorAll('input[name="recordingMode"]');
         const bilingualToggle = document.getElementById('bilingualToggle');
@@ -405,11 +400,10 @@
         let chatSession = null;
         
         let appSettings = {
-            autoSpeakSource: false,
-            autoSpeakTarget: true,
             recordingMode: 'hold',
             bilingualMode: false,
-            voiceURI: null
+            voiceURI: null,
+            speakStates: {} // NEW: Holds speaker state for each language
         };
         
         const languageMap = {
@@ -583,11 +577,6 @@
                 if (listeningBubble) {
                      if (transcriptToProcess) {
                         listeningBubble.querySelector('.text-content').textContent = transcriptToProcess;
-                        
-                        if (appSettings.autoSpeakSource) {
-                            await speakText(transcriptToProcess, sourceLangSelect.value);
-                        }
-
                         await translateAndDisplay(transcriptToProcess);
                         processedSuccessfully = true;
                      } else listeningBubble.parentElement.remove();
@@ -703,7 +692,8 @@
                     assistantBubble.dataset.sourceLang = sourceLangSelect.value;
                     assistantBubble.dataset.targetLang = targetLangSelect.value;
 
-                    if (appSettings.autoSpeakTarget && translatedText) {
+                    // UPDATED: Check speaker state for the target language
+                    if (appSettings.speakStates[targetLangSelect.value] && translatedText) {
                         await speakText(translatedText, targetLangSelect.value);
                     }
 
@@ -788,7 +778,7 @@
                 const featureBubble = document.getElementById(featureBubbleId);
                 if (featureBubble) {
                     featureBubble.querySelector('.text-content').innerHTML = `✨ <strong>Tự nhiên hơn:</strong> ${refinedText}`;
-                    if (appSettings.autoSpeakTarget) {
+                    if (appSettings.speakStates[targetLang]) {
                         await speakText(refinedText, targetLang);
                     }
                 }
@@ -849,7 +839,7 @@
                 case 'toggle': isRecording ? recognition.stop() : recognition.start(); break;
                 case 'continuous':
                     if (isContinuousModeActive) {
-                        isContinuousModeActive = false;
+                        isContinuousModeActive = false; 
                         if (isRecording) recognition.stop();
                     } else {
                         isContinuousModeActive = true; 
@@ -858,7 +848,6 @@
                     break;
             }
         });
-
         micButton.addEventListener('mousedown', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } });
         micButton.addEventListener('mouseup', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
@@ -884,7 +873,7 @@
             } else {
                 console.error("Could not find matching languages to swap.", { oldSourceValue, oldTargetValue });
             }
-            updateSpeakToggleLabels();
+            updateSpeakerIcons(); // Update icons after swapping
         }
 
         swapLangButton.addEventListener('click', () => { 
@@ -897,11 +886,11 @@
             if (recognition) { 
                 recognition.lang = sourceLangSelect.value; 
             }
-            updateSpeakToggleLabels();
+            updateSpeakerIcons();
         }
         sourceLangSelect.addEventListener('change', handleLanguageChange);
         targetLangSelect.addEventListener('change', handleLanguageChange);
-
+        
         voiceSelect.addEventListener('change', (e) => {
             appSettings.voiceURI = e.target.value;
             saveSettings();
@@ -940,15 +929,21 @@
         function saveSettings() { localStorage.setItem('translatorAppSettings', JSON.stringify(appSettings)); }
         function loadSettings() {
             const savedSettings = localStorage.getItem('translatorAppSettings');
-            if (savedSettings) appSettings = { ...appSettings, ...JSON.parse(savedSettings) };
+            if (savedSettings) {
+                 appSettings = { ...appSettings, ...JSON.parse(savedSettings) };
+            }
             
-            autoSpeakSourceToggle.checked = appSettings.autoSpeakSource;
-            autoSpeakTargetToggle.checked = appSettings.autoSpeakTarget;
+            // Initialize speakStates for all available languages if not present
+            Object.keys(languageMap).forEach(langCode => {
+                if (appSettings.speakStates[langCode] === undefined) {
+                    appSettings.speakStates[langCode] = true; // Default to ON
+                }
+            });
 
             document.querySelector(`input[name="recordingMode"][value="${appSettings.recordingMode}"]`).checked = true;
             updateMicInstruction();
             updateBilingualToggleState();
-            updateSpeakToggleLabels();
+            updateSpeakerIcons();
         }
         function updateMicInstruction() {
             if (appSettings.recordingMode === 'hold') micInstruction.textContent = "Nhấn & Giữ Micro để nói";
@@ -966,16 +961,45 @@
                 saveSettings();
             }
         }
-        function updateSpeakToggleLabels() {
-            const sourceLangName = languageMap[sourceLangSelect.value]?.name || 'Nguồn';
-            const targetLangName = languageMap[targetLangSelect.value]?.name || 'Đích';
-            autoSpeakSourceLabel.textContent = `Đọc (${sourceLangName})`;
-            autoSpeakTargetLabel.textContent = `Đọc (${targetLangName})`;
-        }
         
-        autoSpeakSourceToggle.addEventListener('change', e => { appSettings.autoSpeakSource = e.target.checked; saveSettings(); });
-        autoSpeakTargetToggle.addEventListener('change', e => { appSettings.autoSpeakTarget = e.target.checked; saveSettings(); });
+        function updateSpeakerIcons() {
+            const sourceLang = sourceLangSelect.value;
+            const targetLang = targetLangSelect.value;
+            
+            const sourceIcon = sourceLangSpeakerBtn.querySelector('i');
+            const targetIcon = targetLangSpeakerBtn.querySelector('i');
 
+            if (appSettings.speakStates[sourceLang]) {
+                sourceIcon.className = 'fas fa-volume-up text-gray-600';
+                sourceLangSpeakerBtn.classList.remove('muted');
+            } else {
+                sourceIcon.className = 'fas fa-volume-mute text-gray-400';
+                sourceLangSpeakerBtn.classList.add('muted');
+            }
+
+            if (appSettings.speakStates[targetLang]) {
+                targetIcon.className = 'fas fa-volume-up text-gray-600';
+                targetLangSpeakerBtn.classList.remove('muted');
+            } else {
+                targetIcon.className = 'fas fa-volume-mute text-gray-400';
+                targetLangSpeakerBtn.classList.add('muted');
+            }
+        }
+
+        sourceLangSpeakerBtn.addEventListener('click', () => {
+            const lang = sourceLangSelect.value;
+            appSettings.speakStates[lang] = !appSettings.speakStates[lang];
+            saveSettings();
+            updateSpeakerIcons();
+        });
+
+        targetLangSpeakerBtn.addEventListener('click', () => {
+            const lang = targetLangSelect.value;
+            appSettings.speakStates[lang] = !appSettings.speakStates[lang];
+            saveSettings();
+            updateSpeakerIcons();
+        });
+        
         bilingualToggle.addEventListener('change', (e) => { appSettings.bilingualMode = e.target.checked; saveSettings(); });
         recordingModeRadios.forEach(radio => radio.addEventListener('change', (e) => {
             if (e.target.checked) {
