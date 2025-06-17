@@ -293,7 +293,7 @@
                 <button id="sendButton" class="w-12 h-12 flex-shrink-0 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600" title="Gửi" aria-label="Gửi văn bản dịch">
                      <i class="fas fa-paper-plane"></i>
                 </button>
-                <button id="pauseButton" class="w-12 h-12 flex-shrink-0 bg-yellow-500 text-white rounded-full flex items-center justify-center hover:bg-yellow-600 hidden" title="Tạm dừng" aria-label="Tạm dừng hội thoại">
+                <button id="pauseButton" class="w-12 h-12 flex-shrink-0 bg-yellow-500 text-white rounded-full items-center justify-center hover:bg-yellow-600 hidden" title="Tạm dừng" aria-label="Tạm dừng hội thoại">
                     <i class="fas fa-pause"></i>
                 </button>
                 <button id="micButton" class="mic-button w-12 h-12 flex-shrink-0 bg-blue-600 text-white rounded-full flex items-center justify-center" title="Nói để dịch" aria-label="Nói để dịch">
@@ -532,12 +532,13 @@
                     permissionOverlay.style.display = 'flex';
                     isContinuousModeActive = false; 
                 } else if (event.error === 'no-speech') {
+                    // This is a common, non-fatal error. We don't create a bubble for it to keep the UI clean.
                     console.log("No speech detected.");
                 } else {
                     console.warn("Speech Recognition Warning:", event.error);
                 }
                 
-                isRecording = false;
+                isRecording = false; // Ensure recording state is reset
             };
 
             recognition.onend = async () => {
@@ -632,7 +633,7 @@
                 
                 utterance.lang = languageMap[langCode]?.ttsName || langCode;
                 
-                const estimatedTime = (text.length / 10) * 1000 + 1500;
+                const estimatedTime = (text.length / 10) * 1000 + 1500; // Reduced safety margin
                 const safetyTimeout = setTimeout(resolve, Math.max(estimatedTime, 2000));
                 utterance.onend = () => { clearTimeout(safetyTimeout); resolve(); };
                 utterance.onerror = (e) => { console.error("Speech synthesis error:", e); clearTimeout(safetyTimeout); resolve(); };
@@ -702,7 +703,7 @@
                         console.error("Error restarting recognition:", e);
                     }
                 }
-            }, 150);
+            }, 150); // Reduced delay
         }
 
         async function saveToHistory(original, translated, sourceLang, targetLang) {
@@ -757,7 +758,7 @@
                 case 'continuous':
                     if (isContinuousModeActive) {
                         isContinuousModeActive = false;
-                        isPaused = false;
+                        isPaused = false; // Reset pause state
                         pauseButton.classList.add('hidden');
                         if (isRecording) recognition.stop();
                     } else {
@@ -784,7 +785,7 @@
             } else {
                 pauseButton.innerHTML = '<i class="fas fa-pause"></i>';
                 pauseButton.title = "Tạm dừng";
-                startNextTurn(false);
+                startNextTurn(false); // Resume without swapping language
             }
         });
 
