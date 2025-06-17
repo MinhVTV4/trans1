@@ -191,9 +191,18 @@
                  <button id="closeSettingsBtn" class="absolute top-3 right-4 text-gray-500 hover:text-gray-800 text-2xl" aria-label="Đóng cài đặt">&times;</button>
                  <h3 class="text-lg font-semibold text-gray-700 mb-6 text-center">Cài đặt</h3>
                  <div class="space-y-6">
-                    <div class="flex items-center justify-between">
-                        <label for="autoSpeakToggle" class="text-gray-700">Tự động đọc bản dịch</label>
-                        <label class="switch"><input type="checkbox" id="autoSpeakToggle"><span class="slider"></span></label>
+                    <div>
+                        <span class="text-gray-700 font-medium">Tự động đọc</span>
+                        <div class="mt-2 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <label for="autoSpeakSourceToggle" id="autoSpeakSourceLabel" class="text-gray-700">Đọc ngôn ngữ nguồn</label>
+                                <label class="switch"><input type="checkbox" id="autoSpeakSourceToggle"><span class="slider"></span></label>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <label for="autoSpeakTargetToggle" id="autoSpeakTargetLabel" class="text-gray-700">Đọc bản dịch</label>
+                                <label class="switch"><input type="checkbox" id="autoSpeakTargetToggle"><span class="slider"></span></label>
+                            </div>
+                        </div>
                     </div>
                     <div>
                         <label for="voiceSelect" class="text-gray-700 font-medium">Giọng đọc (ưu tiên)</label>
@@ -335,7 +344,10 @@
         const settingsToggleBtn = document.getElementById('settingsToggleBtn');
         const settingsPanel = document.getElementById('settingsPanel');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-        const autoSpeakToggle = document.getElementById('autoSpeakToggle');
+        const autoSpeakSourceToggle = document.getElementById('autoSpeakSourceToggle');
+        const autoSpeakTargetToggle = document.getElementById('autoSpeakTargetToggle');
+        const autoSpeakSourceLabel = document.getElementById('autoSpeakSourceLabel');
+        const autoSpeakTargetLabel = document.getElementById('autoSpeakTargetLabel');
         const voiceSelect = document.getElementById('voiceSelect');
         const recordingModeRadios = document.querySelectorAll('input[name="recordingMode"]');
         const bilingualToggle = document.getElementById('bilingualToggle');
@@ -393,7 +405,8 @@
         let chatSession = null;
         
         let appSettings = {
-            autoSpeak: false,
+            autoSpeakSource: false,
+            autoSpeakTarget: true,
             recordingMode: 'hold',
             bilingualMode: false,
             voiceURI: null
@@ -570,6 +583,11 @@
                 if (listeningBubble) {
                      if (transcriptToProcess) {
                         listeningBubble.querySelector('.text-content').textContent = transcriptToProcess;
+                        
+                        if (appSettings.autoSpeakSource) {
+                            await speakText(transcriptToProcess, sourceLangSelect.value);
+                        }
+
                         await translateAndDisplay(transcriptToProcess);
                         processedSuccessfully = true;
                      } else listeningBubble.parentElement.remove();
@@ -685,7 +703,7 @@
                     assistantBubble.dataset.sourceLang = sourceLangSelect.value;
                     assistantBubble.dataset.targetLang = targetLangSelect.value;
 
-                    if (appSettings.autoSpeak && translatedText) {
+                    if (appSettings.autoSpeakTarget && translatedText) {
                         await speakText(translatedText, targetLangSelect.value);
                     }
 
@@ -770,7 +788,7 @@
                 const featureBubble = document.getElementById(featureBubbleId);
                 if (featureBubble) {
                     featureBubble.querySelector('.text-content').innerHTML = `✨ <strong>Tự nhiên hơn:</strong> ${refinedText}`;
-                    if (appSettings.autoSpeak) {
+                    if (appSettings.autoSpeakTarget) {
                         await speakText(refinedText, targetLang);
                     }
                 }
@@ -831,7 +849,7 @@
                 case 'toggle': isRecording ? recognition.stop() : recognition.start(); break;
                 case 'continuous':
                     if (isContinuousModeActive) {
-                        isContinuousModeActive = false; 
+                        isContinuousModeActive = false;
                         if (isRecording) recognition.stop();
                     } else {
                         isContinuousModeActive = true; 
@@ -840,23 +858,21 @@
                     break;
             }
         });
+
         micButton.addEventListener('mousedown', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } });
         micButton.addEventListener('mouseup', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
         micButton.addEventListener('touchstart', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (!isRecording && !micButton.disabled) recognition.start(); } }, { passive: false });
         micButton.addEventListener('touchend', (e) => { if (appSettings.recordingMode === 'hold') { e.preventDefault(); if (isRecording) recognition.stop(); } });
 
-        // REFACTORED FUNCTION
         function swapLanguages() {
             const oldSourceValue = sourceLangSelect.value; 
             const oldTargetValue = targetLangSelect.value;
             
-            // Find the full locale code (e.g., 'en-US') for the new source language
             const newSourcePrefix = languageMap[oldTargetValue]?.ttsPrefix;
             const newSourceOption = Array.from(sourceLangSelect.options).find(opt => 
                 languageMap[opt.value]?.ttsPrefix === newSourcePrefix
             );
 
-            // Find the simple code (e.g., 'vi') for the new target language
             const newTargetPrefix = languageMap[oldSourceValue]?.ttsPrefix;
             
             if (newSourceOption && newTargetPrefix) {
@@ -868,6 +884,7 @@
             } else {
                 console.error("Could not find matching languages to swap.", { oldSourceValue, oldTargetValue });
             }
+            updateSpeakToggleLabels();
         }
 
         swapLangButton.addEventListener('click', () => { 
@@ -875,7 +892,16 @@
             showUIMessage("Đã đảo chiều ngôn ngữ. Bắt đầu hội thoại mới.", 2500);
             startNewChatSession();
         });
-        sourceLangSelect.addEventListener('change', () => { if (recognition) { recognition.lang = sourceLangSelect.value; } });
+        
+        function handleLanguageChange() {
+            if (recognition) { 
+                recognition.lang = sourceLangSelect.value; 
+            }
+            updateSpeakToggleLabels();
+        }
+        sourceLangSelect.addEventListener('change', handleLanguageChange);
+        targetLangSelect.addEventListener('change', handleLanguageChange);
+
         voiceSelect.addEventListener('change', (e) => {
             appSettings.voiceURI = e.target.value;
             saveSettings();
@@ -915,11 +941,14 @@
         function loadSettings() {
             const savedSettings = localStorage.getItem('translatorAppSettings');
             if (savedSettings) appSettings = { ...appSettings, ...JSON.parse(savedSettings) };
-            autoSpeakToggle.checked = appSettings.autoSpeak;
-            bilingualToggle.checked = appSettings.bilingualMode;
+            
+            autoSpeakSourceToggle.checked = appSettings.autoSpeakSource;
+            autoSpeakTargetToggle.checked = appSettings.autoSpeakTarget;
+
             document.querySelector(`input[name="recordingMode"][value="${appSettings.recordingMode}"]`).checked = true;
             updateMicInstruction();
             updateBilingualToggleState();
+            updateSpeakToggleLabels();
         }
         function updateMicInstruction() {
             if (appSettings.recordingMode === 'hold') micInstruction.textContent = "Nhấn & Giữ Micro để nói";
@@ -937,7 +966,16 @@
                 saveSettings();
             }
         }
-        autoSpeakToggle.addEventListener('change', (e) => { appSettings.autoSpeak = e.target.checked; saveSettings(); });
+        function updateSpeakToggleLabels() {
+            const sourceLangName = languageMap[sourceLangSelect.value]?.name || 'Nguồn';
+            const targetLangName = languageMap[targetLangSelect.value]?.name || 'Đích';
+            autoSpeakSourceLabel.textContent = `Đọc (${sourceLangName})`;
+            autoSpeakTargetLabel.textContent = `Đọc (${targetLangName})`;
+        }
+        
+        autoSpeakSourceToggle.addEventListener('change', e => { appSettings.autoSpeakSource = e.target.checked; saveSettings(); });
+        autoSpeakTargetToggle.addEventListener('change', e => { appSettings.autoSpeakTarget = e.target.checked; saveSettings(); });
+
         bilingualToggle.addEventListener('change', (e) => { appSettings.bilingualMode = e.target.checked; saveSettings(); });
         recordingModeRadios.forEach(radio => radio.addEventListener('change', (e) => {
             if (e.target.checked) {
@@ -1011,4 +1049,5 @@
     </script>
 </body>
 </html>
+
 
