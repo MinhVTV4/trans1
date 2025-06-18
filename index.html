@@ -71,6 +71,13 @@
             max-width: 90%;
             margin: 4px auto;
         }
+        .error-bubble {
+            background-color: #fee2e2;
+            color: #991b1b;
+            text-align: center;
+            max-width: 90%;
+            margin: 4px auto;
+        }
         .gemini-feature-bubble {
             background-color: #e0f2fe; /* Light blue background */
             color: #0c4a6e;
@@ -189,6 +196,9 @@
                 <i class="fas fa-microphone-slash text-5xl text-red-500 mb-4"></i>
                 <h3 class="text-2xl font-bold text-gray-800 mb-2">Cần Quyền Truy Cập Micro</h3>
                 <p class="text-gray-600">Ứng dụng này cần quyền truy cập vào micro của bạn để nhận dạng giọng nói.</p>
+                <p id="ios-pwa-instruction" class="mt-4 text-sm text-blue-700 bg-blue-100 p-2 rounded-lg" style="display: none;">
+                    <strong>Mẹo cho người dùng iOS:</strong> Để cấp quyền, vui lòng mở ứng dụng này trực tiếp trên trình duyệt Safari.
+                </p>
             </div>
 
             <div id="settingsPanel" class="absolute top-0 right-0 w-full max-w-sm h-full bg-white/80 backdrop-blur-sm p-6 rounded-lg shadow-lg transform translate-x-full transition-transform duration-300 ease-in-out z-20 overflow-y-auto">
@@ -304,12 +314,12 @@
              </div>
             
             <div class="flex items-end space-x-2">
+                <button id="micButton" class="mic-button w-12 h-12 flex-shrink-0 bg-blue-600 text-white rounded-full flex items-center justify-center" title="Nói để dịch" aria-label="Nói để dịch">
+                    <i class="fas fa-microphone-alt text-xl"></i>
+                </button>
                 <textarea id="textInput" rows="1" class="flex-grow p-2.5 bg-gray-100 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Nhập văn bản để dịch..."></textarea>
                 <button id="sendButton" class="w-12 h-12 flex-shrink-0 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600" title="Gửi" aria-label="Gửi văn bản dịch">
                      <i class="fas fa-paper-plane"></i>
-                </button>
-                <button id="micButton" class="mic-button w-12 h-12 flex-shrink-0 bg-blue-600 text-white rounded-full flex items-center justify-center" title="Nói để dịch" aria-label="Nói để dịch">
-                    <i class="fas fa-microphone-alt text-xl"></i>
                 </button>
             </div>
         </div>
@@ -321,7 +331,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+        import { initializeFirestore, memoryLocalCache, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
         import { getAI, getGenerativeModel } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-ai.js";
 
         // DOM Elements
@@ -378,7 +388,9 @@
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
-        const db = getFirestore(app);
+        const db = initializeFirestore(app, {
+            localCache: memoryLocalCache()
+        });
         
         let generativeModel;
         try {
@@ -403,7 +415,7 @@
             recordingMode: 'hold',
             bilingualMode: false,
             voiceURI: null,
-            speakStates: {} // NEW: Holds speaker state for each language
+            speakStates: {} 
         };
         
         const languageMap = {
@@ -465,6 +477,7 @@
                 case 'user': bubbleWrapper.className = 'flex justify-end'; bubbleClass = 'user-bubble'; break;
                 case 'assistant': bubbleWrapper.className = 'flex justify-start'; bubbleClass = 'assistant-bubble'; break;
                 case 'info': bubbleWrapper.className = 'flex justify-center'; bubbleClass = 'info-bubble'; break;
+                case 'error': bubbleWrapper.className = 'flex justify-center'; bubbleClass = 'error-bubble'; break;
                 case 'gemini-feature': bubbleWrapper.className = 'flex justify-start'; bubbleClass = 'gemini-feature-bubble'; break;
             }
             
@@ -557,6 +570,11 @@
                 currentListenBubbleId = null;
 
                 if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                    const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator.standalone);
+                    if (isIOS && isInStandaloneMode) {
+                        document.getElementById('ios-pwa-instruction').style.display = 'block';
+                    }
                     permissionOverlay.style.display = 'flex';
                     isContinuousModeActive = false; 
                 } else if (event.error === 'no-speech') {
@@ -692,7 +710,6 @@
                     assistantBubble.dataset.sourceLang = sourceLangSelect.value;
                     assistantBubble.dataset.targetLang = targetLangSelect.value;
 
-                    // UPDATED: Check speaker state for the target language
                     if (appSettings.speakStates[targetLangSelect.value] && translatedText) {
                         await speakText(translatedText, targetLangSelect.value);
                     }
@@ -708,8 +725,20 @@
                 if (failedBubble && failedBubble.parentElement) {
                     failedBubble.parentElement.remove();
                 }
+
+                let errorMessage = "Đã có lỗi với AI, phiên dịch đã được làm mới.";
+                if (error.message) {
+                    if (error.message.includes('429') || error.message.toLowerCase().includes('quota')) {
+                        errorMessage = "Lỗi: Đã vượt quá hạn ngạch (quota) sử dụng API. Vui lòng kiểm tra lại gói cước trên Google AI Studio hoặc Firebase.";
+                    } else if (error.message.toLowerCase().includes('api key') || error.message.includes('403')) {
+                        errorMessage = "Lỗi: API Key không hợp lệ hoặc chưa được kích hoạt cho dự án này. Vui lòng kiểm tra lại cài đặt Firebase.";
+                    } else {
+                        errorMessage = `Lỗi từ AI: ${error.message}.`;
+                    }
+                }
+                
                 startNewChatSession();
-                createBubble("Đã có lỗi với AI, phiên dịch đã được làm mới.", 'info');
+                createBubble(errorMessage, 'error');
             }
         }
         
@@ -795,7 +824,7 @@
 
             const sourceLangName = languageMap[sourceLang]?.geminiName;
             const targetLangName = languageMap[targetLang]?.geminiName;
-            const explanationLangName = languageMap[sourceLangSelect.value]?.geminiName; // Explain in the user's current source language
+            const explanationLangName = languageMap[sourceLangSelect.value]?.geminiName;
 
             const prompt = `Explain the translation from the ${sourceLangName} phrase "${originalText}" to the ${targetLangName} phrase "${translatedText}". Focus on any nuances, idiomatic expressions, or cultural context. Provide the explanation in ${explanationLangName}.`;
 
@@ -873,7 +902,7 @@
             } else {
                 console.error("Could not find matching languages to swap.", { oldSourceValue, oldTargetValue });
             }
-            updateSpeakerIcons(); // Update icons after swapping
+            updateSpeakerIcons();
         }
 
         swapLangButton.addEventListener('click', () => { 
@@ -936,7 +965,8 @@
             // Initialize speakStates for all available languages if not present
             Object.keys(languageMap).forEach(langCode => {
                 if (appSettings.speakStates[langCode] === undefined) {
-                    appSettings.speakStates[langCode] = true; // Default to ON
+                    // Default ON for English, OFF for others initially
+                    appSettings.speakStates[langCode] = langCode.startsWith('en');
                 }
             });
 
@@ -970,7 +1000,7 @@
             const targetIcon = targetLangSpeakerBtn.querySelector('i');
 
             if (appSettings.speakStates[sourceLang]) {
-                sourceIcon.className = 'fas fa-volume-up text-gray-600';
+                sourceIcon.className = 'fas fa-volume-up text-blue-600';
                 sourceLangSpeakerBtn.classList.remove('muted');
             } else {
                 sourceIcon.className = 'fas fa-volume-mute text-gray-400';
@@ -978,7 +1008,7 @@
             }
 
             if (appSettings.speakStates[targetLang]) {
-                targetIcon.className = 'fas fa-volume-up text-gray-600';
+                targetIcon.className = 'fas fa-volume-up text-blue-600';
                 targetLangSpeakerBtn.classList.remove('muted');
             } else {
                 targetIcon.className = 'fas fa-volume-mute text-gray-400';
@@ -1073,5 +1103,3 @@
     </script>
 </body>
 </html>
-
-
