@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trình Phiên Dịch Chat AI</title>
+    <title>Phiên dịch AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -11,6 +11,10 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f0f2f5;
+            overflow: hidden; /* Prevent body scrolling */
+        }
+        .app-container {
+            transition: height 0.2s ease-in-out;
         }
         #conversationView::-webkit-scrollbar, #historyPanel::-webkit-scrollbar, #settingsPanel::-webkit-scrollbar {
             width: 6px;
@@ -162,26 +166,26 @@
         }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-2 sm:p-4">
+<body class="flex flex-col items-center justify-center min-h-screen">
 
-    <div class="w-full max-w-2xl h-[95vh] flex flex-col bg-white p-3 sm:p-5 rounded-2xl shadow-2xl">
-        <header class="flex justify-between items-center mb-3 pb-3 border-b border-gray-200">
+    <div id="appContainer" class="app-container w-full max-w-2xl flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <header class="flex-shrink-0 flex justify-between items-center p-3 border-b border-gray-200">
             <div class="text-left">
-                 <h1 class="text-xl sm:text-2xl font-bold text-gray-800">Trình Phiên Dịch Chat</h1>
-                 <p id="mic-instruction" class="text-xs sm:text-sm text-gray-500">Nhấn & Giữ Micro để nói</p>
+                 <h1 class="text-lg sm:text-xl font-bold text-gray-800">Phiên dịch AI</h1>
+                 <p id="mic-instruction" class="text-xs text-gray-500">Nhấn & Giữ Micro để nói</p>
             </div>
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-1">
                  <button id="newChatBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Cuộc trò chuyện mới" aria-label="Cuộc trò chuyện mới">
-                     <i class="fas fa-plus-square text-xl text-gray-600"></i>
+                     <i class="fas fa-plus-square text-lg text-gray-600"></i>
                  </button>
                  <button id="settingsToggleBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Cài đặt" aria-label="Cài đặt">
-                     <i class="fas fa-cog text-xl text-gray-600"></i>
+                     <i class="fas fa-cog text-lg text-gray-600"></i>
                  </button>
                  <button id="authToggleBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Tài khoản" aria-label="Tài khoản">
-                     <i class="fas fa-user-circle text-xl text-gray-600"></i>
+                     <i class="fas fa-user-circle text-lg text-gray-600"></i>
                  </button>
                   <button id="historyToggleBtn" class="p-2 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" title="Lịch sử dịch" aria-label="Lịch sử dịch">
-                     <i class="fas fa-history text-xl text-gray-600"></i>
+                     <i class="fas fa-history text-lg text-gray-600"></i>
                  </button>
             </div>
         </header>
@@ -268,7 +272,7 @@
         </div>
 
         <!-- Controls Area -->
-        <div class="px-1 sm:px-4 pt-3 border-t border-gray-200">
+        <div class="flex-shrink-0 px-1 sm:px-4 pt-3 border-t border-gray-200">
              <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center flex-1">
                     <select id="sourceLangSelect" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
@@ -313,7 +317,7 @@
                 </div>
              </div>
             
-            <div class="flex items-end space-x-2">
+            <div class="flex items-end space-x-2 pb-2">
                 <button id="micButton" class="mic-button w-12 h-12 flex-shrink-0 bg-blue-600 text-white rounded-full flex items-center justify-center" title="Nói để dịch" aria-label="Nói để dịch">
                     <i class="fas fa-microphone-alt text-xl"></i>
                 </button>
@@ -331,10 +335,11 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
-        import { initializeFirestore, memoryLocalCache, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+        import { initializeFirestore, memoryLocalCache, collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, limit } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
         import { getAI, getGenerativeModel } from "https://www.gstatic.com/firebasejs/11.8.1/firebase-ai.js";
 
         // DOM Elements
+        const appContainer = document.getElementById('appContainer');
         const micButton = document.getElementById('micButton');
         const micInstruction = document.getElementById('mic-instruction');
         const conversationView = document.getElementById('conversationView');
@@ -1075,7 +1080,7 @@
 
         function loadTranslationHistory(userId) {
             if (unsubscribeHistory) unsubscribeHistory();
-            const q = query(collection(db, "translations"), where("userId", "==", userId), orderBy("createdAt", "desc"));
+            const q = query(collection(db, "translations"), where("userId", "==", userId), orderBy("createdAt", "desc"), limit(10)); // <-- UPDATED with limit(10)
             unsubscribeHistory = onSnapshot(q, (querySnapshot) => {
                 translationHistoryDiv.innerHTML = querySnapshot.empty ? '<p class="text-center text-gray-500 text-sm">Chưa có lịch sử nào.</p>' : '';
                 querySnapshot.forEach((doc) => {
@@ -1091,6 +1096,12 @@
         }
         
         // --- Initial Load ---
+        function setAppHeight() {
+            appContainer.style.height = `${window.innerHeight}px`;
+        }
+        window.addEventListener('resize', setAppHeight);
+        setAppHeight();
+
         loadSettings();
         initializeSpeechRecognition();
         startNewChatSession();
