@@ -383,13 +383,14 @@
 
         // IMPORTANT: Replace with your actual Firebase config
         const firebaseConfig = {
-            apiKey: "AIzaSyDRS3wkou1M7RjCqBdBwTmNkvcCzGANgxA", 
-            authDomain: "cardnew-bfbce.firebaseapp.com",
-            projectId: "cardnew-bfbce",
-            storageBucket: "cardnew-bfbce.firebasestorage.app",
-            messagingSenderId: "110225482882",
-            appId: "1:110225482882:web:c3cdb03d508436ff17c09b"
-        };
+     const firebaseConfig = {
+    apiKey: "AIzaSyDBeliQXZDzIOyVVfnKdoKi-yTMgt33its",
+    authDomain: "test-f9b86.firebaseapp.com",
+    projectId: "test-f9b86",
+    storageBucket: "test-f9b86.firebasestorage.app",
+    messagingSenderId: "853017830675",
+    appId: "1:853017830675:web:b56ebdccc9219c596ba6e6"
+  };
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -400,7 +401,7 @@
         let generativeModel;
         try {
             const firebaseAIService = getAI(app);
-            generativeModel = getGenerativeModel(firebaseAIService, { model: "gemini-1.5-flash" });
+            generativeModel = getGenerativeModel(firebaseAIService, { model: "gemini-3.1-flash-lite-preview" });
         } catch (error) {
             console.error("Lỗi khởi tạo Firebase AI Logic:", error);
             showUIMessage("Lỗi khởi tạo dịch vụ AI.", 5000);
